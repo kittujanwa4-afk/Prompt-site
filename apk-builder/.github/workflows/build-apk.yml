@@ -1,0 +1,47 @@
+# Is workflow se kisi bhi live site ki debug APK banti hai (Capacitor se).
+# GitHub repo me daalo -> Actions tab -> "Build APK" -> Run workflow -> site URL daalo.
+# Artifact "app-debug-apk" download karo. (Ye template hai; pehli baar chalane par chhoti-moti fix lag sakti hai.)
+name: Build APK
+on:
+  workflow_dispatch:
+    inputs:
+      site_url:
+        description: "Live site URL (https://mera-business.example.com)"
+        required: true
+      app_name:
+        description: "App ka naam"
+        required: true
+        default: "MyApp"
+      app_id:
+        description: "Package id (com.example.myapp)"
+        required: true
+        default: "com.promptsite.myapp"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - name: Create Capacitor project
+        env:
+          SITE_URL: ${{ inputs.site_url }}
+          APP_NAME: ${{ inputs.app_name }}
+          APP_ID: ${{ inputs.app_id }}
+        run: |
+          mkdir app && cd app
+          npm init -y
+          npm i @capacitor/core @capacitor/cli @capacitor/android
+          mkdir www && echo '<html><body>Loading...</body></html>' > www/index.html
+          cat > capacitor.config.json <<EOF
+          { "appId": "$APP_ID", "appName": "$APP_NAME", "webDir": "www",
+            "server": { "url": "$SITE_URL", "cleartext": false } }
+          EOF
+          npx cap add android
+          npx cap sync android
+          cd android && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: app/android/app/build/outputs/apk/debug/app-debug.apk
