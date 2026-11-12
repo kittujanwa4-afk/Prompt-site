@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PromptSite – Prompt se App aur Website</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#0b0d14;--card:#151826;--line:#262b40;--tx:#eef0f8;--mut:#98a0bd;--pri:#6366f1;--ok:#22c55e;--err:#ef4444}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--tx)}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}
+h1{font-size:18px;margin:0}main{max-width:1100px;margin:0 auto;padding:16px;display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+textarea,input{width:100%;background:#0e1120;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit}
+textarea{min-height:110px;resize:vertical}
+button{background:var(--pri);color:#fff;border:0;border-radius:10px;padding:12px 16px;font:inherit;font-weight:600;cursor:pointer}
+button.sec{background:#222742}button:disabled{opacity:.5}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{flex:1 1 140px}
+.mut{color:var(--mut);font-size:14px}.msg{font-size:14px;margin-top:8px}.err{color:var(--err)}.ok{color:var(--ok)}
+iframe{width:100%;height:520px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.chips button{background:#1c2140;font-weight:500;font-size:13px;padding:8px 10px}
+.hide{display:none}.tabs button{flex:0 0 auto}
+@media(min-width:900px){main{grid-template-columns:380px 1fr}iframe{height:640px}}
+a{color:#93a0ff}
+</style>
+</head>
+<body>
+<header><h1>⚡ PromptSite</h1><div id="who" class="mut"></div></header>
+
+<main id="auth" class="hide" style="grid-template-columns:1fr;max-width:420px">
+  <div class="card">
+    <h2 style="margin-top:0">Login / Sign up</h2>
+    <input id="em" type="email" placeholder="Email" autocomplete="email" style="margin-bottom:8px">
+    <input id="pw" type="password" placeholder="Password (min 6)" autocomplete="current-password" style="margin-bottom:8px">
+    <div class="row"><button id="login">Login</button><button id="signup" class="sec">Sign up</button></div>
+    <div id="amsg" class="msg"></div>
+  </div>
+</main>
+
+<main id="app" class="hide">
+  <section class="card" style="align-self:start">
+    <label class="mut">Aapko kya banana hai?</label>
+    <textarea id="prompt" placeholder="Jaise: Ek restaurant ki website jisme menu, gallery aur WhatsApp order button ho"></textarea>
+    <div class="chips row" style="margin:8px 0">
+      <button data-p="Ek professional portfolio website with projects, about aur contact form">Portfolio</button>
+      <button data-p="Ek online dukaan ki landing page with products grid aur cart (working JS)">Dukaan</button>
+      <button data-p="Ek working todo app jisme add, delete, complete, filter aur dark mode ho">Todo app</button>
+      <button data-p="Ek expense tracker app with chart jo localStorage me save kare">Expense app</button>
+    </div>
+    <button id="gen" style="width:100%">✨ Banao</button>
+    <div id="gmsg" class="msg"></div>
+
+    <hr style="border-color:var(--line);margin:16px 0">
+    <label class="mut">Badlav karwana hai? (chat se edit)</label>
+    <div class="row"><input id="edit" placeholder="Jaise: button ka rang hara karo"><button id="editBtn" class="sec" style="flex:0 0 auto">Badlo</button></div>
+
+    <hr style="border-color:var(--line);margin:16px 0">
+    <label class="mut">Apni website ka naam chuno (free address)</label>
+    <input id="name" placeholder="mera-business" maxlength="31" style="margin-top:6px">
+    <div id="addr" class="mut" style="margin:6px 0"></div>
+    <button id="pub" style="width:100%" disabled>🚀 Live karo</button>
+    <div id="pmsg" class="msg"></div>
+  </section>
+
+  <section class="card">
+    <div class="row tabs" style="margin-bottom:10px">
+      <button id="tPrev" class="sec">Preview</button>
+      <button id="tCode" class="sec">Code</button>
+      <button id="dl" class="sec">⬇ HTML file</button>
+      <button id="mine" class="sec">Meri sites</button>
+    </div>
+    <iframe id="frame" sandbox="allow-scripts allow-forms allow-modals allow-popups" srcdoc="<body style='font-family:sans-serif;color:#888;display:grid;place-items:center;height:100vh;margin:0'>Preview yahan dikhega</body>"></iframe>
+    <textarea id="code" class="hide" style="min-height:520px;font-family:monospace;font-size:12px"></textarea>
+    <div id="mineBox" class="hide" style="margin-top:10px"></div>
+    <div id="appBox" class="hide card" style="margin-top:12px">
+      <b>📱 Ye website app bhi ban sakti hai</b>
+      <p class="mut" style="margin:6px 0">1) Phone me site kholo → Menu → <i>Add to Home screen</i> (turant app jaisa).<br>
+      2) APK ke liye: <a id="pwab" target="_blank" rel="noopener">PWABuilder</a> me site ka link daalo → Android → Download APK.<br>
+      3) Ya GitHub Actions wala <code>apk-builder</code> (README dekho).</p>
+    </div>
+  </section>
+</main>
+
+<script>
+let sb, cfg, session = null, html = '', title = '';
+const $ = (id) => document.getElementById(id);
+const say = (id, t, c) => { $(id).textContent = t; $(id).className = 'msg ' + (c || ''); };
+
+async function init() {
+  cfg = await (await fetch('/api/config')).json();
+  sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+  const { data } = await sb.auth.getSession();
+  setSession(data.session);
+  sb.auth.onAuthStateChange((_e, s) => setSession(s));
+}
+function setSession(s) {
+  session = s;
+  $('auth').classList.toggle('hide', !!s);
+  $('app').classList.toggle('hide', !s);
+  $('who').innerHTML = s ? `${s.user.email} · <a href="#" id="out">Logout</a>` : '';
+  if (s) $('out').onclick = (e) => { e.preventDefault(); sb.auth.signOut(); };
+}
+$('login').onclick = async () => {
+  const { error } = await sb.auth.signInWithPassword({ email: $('em').value, password: $('pw').value });
+  say('amsg', error ? error.message : '', 'err');
+};
+$('signup').onclick = async () => {
+  const { data, error } = await sb.auth.signUp({ email: $('em').value, password: $('pw').value });
+  if (error) return say('amsg', error.message, 'err');
+  if (!data.session) say('amsg', 'Email par confirm link bheja gaya hai. Confirm karke login karo.', 'ok');
+};
+
+const api = async (path, body, method = 'POST') => {
+  const r = await fetch(path, {
+    method,
+    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + session.access_token },
+    body: method === 'GET' ? undefined : JSON.stringify(body),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || 'Error');
+  return d;
+};
+
+function show(h) {
+  html = h;
+  $('frame').srcdoc = h;
+  $('code').value = h;
+  $('pub').disabled = false;
+  const t = h.match(/<title>([^<]*)/i);
+  title = t ? t[1] : '';
+}
+async function generate(prompt, current) {
+  say('gmsg', 'AI bana raha hai… 20-60 second lag sakte hain', 'mut');
+  $('gen').disabled = $('editBtn').disabled = true;
+  try {
+    const d = await api('/api/generate', { prompt, current });
+    show(d.html);
+    say('gmsg', 'Ho gaya! Preview dekho.', 'ok');
+  } catch (e) { say('gmsg', e.message, 'err'); }
+  $('gen').disabled = $('editBtn').disabled = false;
+}
+$('gen').onclick = () => $('prompt').value.trim() && generate($('prompt').value.trim(), '');
+$('editBtn').onclick = () => html && $('edit').value.trim() && generate($('edit').value.trim(), html);
+document.querySelectorAll('.chips button').forEach((b) => (b.onclick = () => ($('prompt').value = b.dataset.p)));
+
+$('name').oninput = () => {
+  const n = ($('name').value = $('name').value.toLowerCase().replace(/[^a-z0-9-]/g, ''));
+  $('addr').textContent = n ? 'Address: ' + (cfg.rootDomain ? `https://${n}.${cfg.rootDomain}` : `${location.origin}/s/${n}`) : '';
+};
+$('pub').onclick = async () => {
+  const name = $('name').value;
+  if (!name) return say('pmsg', 'Pehle website ka naam likho', 'err');
+  say('pmsg', 'Live ho raha hai…', 'mut');
+  try {
+    const d = await api('/api/publish', { name, html: $('code').value, title, prompt: $('prompt').value });
+    $('pmsg').innerHTML = `<span class="ok">Live ✅</span> <a href="${d.url}" target="_blank" rel="noopener">${d.url}</a>`;
+    $('appBox').classList.remove('hide');
+    $('pwab').href = 'https://www.pwabuilder.com/?site=' + encodeURIComponent(d.url);
+  } catch (e) { say('pmsg', e.message, 'err'); }
+};
+$('tPrev').onclick = () => { show($('code').value || html); $('frame').classList.remove('hide'); $('code').classList.add('hide'); $('mineBox').classList.add('hide'); };
+$('tCode').onclick = () => { $('frame').classList.add('hide'); $('code').classList.remove('hide'); $('mineBox').classList.add('hide'); };
+$('dl').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([$('code').value || html], { type: 'text/html' }));
+  a.download = ($('name').value || 'website') + '.html'; a.click();
+};
+$('mine').onclick = async () => {
+  $('mineBox').classList.remove('hide');
+  try {
+    const { sites } = await api('/api/publish', null, 'GET');
+    $('mineBox').innerHTML = sites.length
+      ? sites.map((s) => `<div class="mut" style="padding:6px 0">• <a href="${cfg.rootDomain ? `https://${s.name}.${cfg.rootDomain}` : `/s/${s.name}`}" target="_blank" rel="noopener">${s.name}</a> – ${s.title.replace(/</g, '&lt;')}</div>`).join('')
+      : '<div class="mut">Abhi koi site nahi</div>';
+  } catch (e) { $('mineBox').textContent = e.message; }
+};
+init();
+</script>
+</body>
+</html>
